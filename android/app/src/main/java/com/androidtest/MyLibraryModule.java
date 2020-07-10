@@ -15,16 +15,15 @@ import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.os.Build;
-import android.util.Log;
 import android.widget.ArrayAdapter;
-import android.widget.Toast;
 
 import androidx.annotation.RequiresApi;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -32,8 +31,6 @@ import java.util.Date;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-
-import static android.app.Activity.RESULT_OK;
 
 //import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
@@ -47,8 +44,7 @@ public class MyLibraryModule extends ReactContextBaseJavaModule implements Activ
     BluetoothAdapter bleAdapter;
     ArrayAdapter mArrayAdapter;
     Context context;
-    public ArrayList<BluetoothDevice> mBTDevices = new ArrayList<>();
-    public ArrayList<BluetoothDevice> mBTPairedDevice = new ArrayList<>();
+    public ArrayList<JSONObject> mBTDevices = new ArrayList<>();
     public WritableArray array = new WritableNativeArray();
     public Callback activityCallback;
     private static final int ENABLE_REQUEST = 1001;
@@ -112,18 +108,21 @@ public class MyLibraryModule extends ReactContextBaseJavaModule implements Activ
             @Override
             public void run() {
                 bleAdapter.stopLeScan(leScanCallback);
-
-                for (BluetoothDevice bt : mBTDevices) {
-                    WritableMap arrayMap = new WritableNativeMap();
-                    Date date = new Date();
-                    long time = date.getTime();
-                    Timestamp ts = new Timestamp(time);
-                    arrayMap.putString("timestamp", ts.toString());
-                    arrayMap.putString("name", bt.getName());
-                    arrayMap.putString("address", bt.getAddress().toString());
-                    array.pushMap(arrayMap);
-                }
                 try {
+                    for (JSONObject object : mBTDevices) {
+                        WritableMap arrayMap = new WritableNativeMap();
+                        Date date = new Date();
+                        long time = date.getTime();
+                        Timestamp ts = new Timestamp(time);
+                        arrayMap.putString("timestamp", ts.toString());
+                        arrayMap.putString("name", String.valueOf(object.get("name")));
+                        arrayMap.putString("btAddr", String.valueOf(object.get("btAddr")));
+                        arrayMap.putString("rssi", String.valueOf(object.get("rssi")));
+                        arrayMap.putString("txPower", String.valueOf(object.get("txPower")));
+                        arrayMap.putString("distanceBle", String.valueOf(object.get("distanceBle")));
+                        array.pushMap(arrayMap);
+                    }
+
 
                     callback.invoke(null, array);
                 } catch (Exception e) {
@@ -136,24 +135,58 @@ public class MyLibraryModule extends ReactContextBaseJavaModule implements Activ
 
     private BluetoothAdapter.LeScanCallback leScanCallback = new BluetoothAdapter.LeScanCallback() {
         @Override
-        public void onLeScan(BluetoothDevice device, int rssi, byte[] bytes) {
-
-            System.out.println("===============================" + device);
-            System.out.println("===============================" + device.getName());
-            System.out.println("===================rssi============" + rssi);
+        public void onLeScan(BluetoothDevice device, int rssi, byte[] scanRecord) {
+            System.out.println("________________________________"+device.getName());
             boolean valueContain = false;
+
             System.out.println(device);
             for (int index = 0; index < mBTDevices.size(); index++) {
-                if (device.getAddress().equals(mBTDevices.get(index).getAddress())) {
-                    valueContain = true;
+                try {
+                    if (device.getAddress().equals(mBTDevices.get(index).get("btAddr"))) {
+                        valueContain = true;
+                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
                 }
             }
             if (!valueContain) {
-                mBTDevices.add(device);
+                JSONObject jsonObject = new JSONObject();
+                double distance = getBLEDistance(rssi, scanRecord[29]);
+                System.out.println("______________"+distance);
+                try {
+                    if (device.getName() != null) {
+
+                        jsonObject.put("name", device.getName());
+                    } else {
+                        jsonObject.put("name", "unavailable");
+                    }
+                    jsonObject.put("btAddr", device.getAddress());
+                    jsonObject.put("rssi", rssi);
+                    jsonObject.put("txPower", scanRecord[29]);
+                    jsonObject.put("distanceBle", distance);
+                    mBTDevices.add(jsonObject);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+
             }
 
         }
     };
+
+    private double getBLEDistance(int rssi, byte scanValue) {
+        int txPower = (int) scanValue;
+        if (rssi == 0) {
+            return -1.0; // if we cannot determine distance, return -1.
+        }
+        double ratio = rssi * 1.0 / txPower;
+        if (ratio < 1.0) {
+            return Math.pow(ratio, 10);
+        } else {
+            double accuracy = (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
+            return accuracy;
+        }
+    }
 
     // Activity Result
 
