@@ -1,7 +1,33 @@
 package com.androidtest;
 
+import android.annotation.TargetApi;
+import android.app.Activity;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Handler;
+import android.util.Log;
+import android.widget.Toast;
+
+import java.util.ArrayList;
+import java.util.List;
+
+
 import com.facebook.react.bridge.ActivityEventListener;
-import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
@@ -11,61 +37,80 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeArray;
 import com.facebook.react.bridge.WritableNativeMap;
 
-import android.app.Activity;
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothManager;
-import android.content.Context;
-import android.content.Intent;
-import android.os.Build;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.widget.ArrayAdapter;
 
-import androidx.annotation.RequiresApi;
-
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.sql.Timestamp;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+
+import static com.facebook.react.bridge.UiThreadUtil.runOnUiThread;
+
 
 //import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 public class MyLibraryModule extends ReactContextBaseJavaModule implements ActivityEventListener {
 
+    private BluetoothAdapter mBluetoothAdapter;
+    private int REQUEST_ENABLE_BT = 1;
+    private static final long SCAN_PERIOD = 10000;
+    private BluetoothLeScanner mLEScanner;
+    private ScanSettings settings;
+    private List<ScanFilter> filters;
+    private BluetoothGatt mGatt;
+    private Context context;
 
-    private static int REQUEST_ENABLE_BT = 1001;
-    Promise tryToTurnBluetoothOn;
-    private final ReactApplicationContext reactContext;
-    private static final String TAG = "MainActivity";
-    BluetoothAdapter bleAdapter;
-    ArrayAdapter mArrayAdapter;
-    Context context;
-    public ArrayList<JSONObject> mBTDevices = new ArrayList<>();
-    public WritableArray array = new WritableNativeArray();
-    public Callback activityCallback;
-    private static final int ENABLE_REQUEST = 1001;
-
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     public MyLibraryModule(ReactApplicationContext reactContext) {
         super(reactContext);
-        this.reactContext = reactContext;
-        reactContext.addActivityEventListener(this);
-        // Initializes Bluetooth adapter.
+        context = reactContext;
+        if (!reactContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
+            Toast.makeText(reactContext.getApplicationContext(), "BLE Not Supported", Toast.LENGTH_SHORT).show();
+            return;
+        }
         final BluetoothManager bluetoothManager =
                 (BluetoothManager) reactContext.getSystemService(Context.BLUETOOTH_SERVICE);
-        bleAdapter = bluetoothManager.getAdapter();
+        mBluetoothAdapter = bluetoothManager.getAdapter();
+        onResume();
+
     }
 
+    protected void onResume() {
+
+        if (mBluetoothAdapter == null || !mBluetoothAdapter.isEnabled()) {
+            Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            getReactApplicationContext().getCurrentActivity().startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+        } else {
+            if (Build.VERSION.SDK_INT >= 21) {
+                mLEScanner = mBluetoothAdapter.getBluetoothLeScanner();
+                settings = new ScanSettings.Builder()
+                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                        .build();
+                filters = new ArrayList<ScanFilter>();
+            }
+            scanLeDevice(true);
+        }
+    }
+
+//    @ReactMethod
+//    public void getDeviceBle(Callback cb) {
+//        WritableArray array2 = new WritableNativeArray();
+//        array2 = array;
+//        try {
+//
+//            cb.invoke(null, array2);
+//
+//        } catch (Exception e) {
+//
+//            cb.invoke(e.getMessage(), null);
+//        }
+//    }
 
     @Override
     public String getName() {
         return "MyLibraryBle";
     }
-
 
     @ReactMethod
     public void sampleMethod(String stringArgument, int numberArgument, Callback callback) {
@@ -73,127 +118,46 @@ public class MyLibraryModule extends ReactContextBaseJavaModule implements Activ
         callback.invoke("Received numberArgument: " + numberArgument + " stringArgument: " + stringArgument);
     }
 
-    /**
-     * List of paired devices.
-     */
     @ReactMethod
-    public void getListOfPairedDevices(Callback cb) {
-        System.out.println("called method");
-        WritableArray pairedArray = new WritableNativeArray();
-        // getting list of devies which are already paired with our device
-        Set<BluetoothDevice> pairedDevice = bleAdapter.getBondedDevices();
-        if (pairedDevice.size() > 0) {
-            for (BluetoothDevice device : pairedDevice) {
-                // device name
-                WritableMap arrayMap = new WritableNativeMap();
-                arrayMap.putString("name", device.getName());
-                arrayMap.putString("address", device.getAddress().toString());
-                pairedArray.pushMap(arrayMap);
-            }
-        }
+    public void getDeviceName(Callback cb) {
         try {
-            cb.invoke(null, pairedArray);
+            cb.invoke(null, android.os.Build.MODEL);
         } catch (Exception e) {
-            cb.invoke(e.getMessage().toString(), null);
+            cb.invoke(e.toString(), null);
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-    @ReactMethod
-    public void getBleDevices(Callback callback) {
-        mBTDevices.clear();
-        WritableArray array = new WritableNativeArray();
-        new Timer().schedule(new TimerTask() {
-            @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
-            @Override
-            public void run() {
-                bleAdapter.stopLeScan(leScanCallback);
-                try {
-                    for (JSONObject object : mBTDevices) {
-                        WritableMap arrayMap = new WritableNativeMap();
-                        Date date = new Date();
-                        long time = date.getTime();
-                        Timestamp ts = new Timestamp(time);
-                        arrayMap.putString("timestamp", ts.toString());
-                        arrayMap.putString("name", String.valueOf(object.get("name")));
-                        arrayMap.putString("btAddr", String.valueOf(object.get("btAddr")));
-                        arrayMap.putString("rssi", String.valueOf(object.get("rssi")));
-                        arrayMap.putString("txPower", String.valueOf(object.get("txPower")));
-                        arrayMap.putString("distanceBle", String.valueOf(object.get("distanceBle")));
-                        array.pushMap(arrayMap);
-                    }
+//    @ReactMethod
+//    public void getBleDevices(Callback callback) {
+//        mBTDevices.clear();
+//        WritableArray array = new WritableNativeArray();
+//        new Timer().schedule(new TimerTask() {
+//            @Override
+//            public void run() {
+//                bleAdapter.stopLeScan(leScanCallback);
+//                callback.invoke(null, array);
+//            }
+//        }, 10000); // 300 is the delay in millis
+//        bleAdapter.startLeScan(leScanCallback);
+//    }
+//
+//    private BluetoothAdapter.LeScanCallback leScanCallback = new BluetoothAdapter.LeScanCallback() {
+//        @Override
+//        public void onLeScan(BluetoothDevice bluetoothDevice, int i, byte[] bytes) {
+//            System.out.println("===============================" + bluetoothDevice.getName());
+//
+//        }
+//    };
 
-
-                    callback.invoke(null, array);
-                } catch (Exception e) {
-                    callback.invoke(e.getMessage(), null);
-                }
-            }
-        }, 10000); // 300 is the delay in millis
-        bleAdapter.startLeScan(leScanCallback);
-    }
-
-    private BluetoothAdapter.LeScanCallback leScanCallback = new BluetoothAdapter.LeScanCallback() {
-        @Override
-        public void onLeScan(BluetoothDevice device, int rssi, byte[] scanRecord) {
-            System.out.println("________________________________"+device.getName());
-            boolean valueContain = false;
-
-            System.out.println(device);
-            for (int index = 0; index < mBTDevices.size(); index++) {
-                try {
-                    if (device.getAddress().equals(mBTDevices.get(index).get("btAddr"))) {
-                        valueContain = true;
-                    }
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-            }
-            if (!valueContain) {
-                JSONObject jsonObject = new JSONObject();
-                double distance = getBLEDistance(rssi, scanRecord[29]);
-                System.out.println("______________"+distance);
-                try {
-                    if (device.getName() != null) {
-
-                        jsonObject.put("name", device.getName());
-                    } else {
-                        jsonObject.put("name", "unavailable");
-                    }
-                    jsonObject.put("btAddr", device.getAddress());
-                    jsonObject.put("rssi", rssi);
-                    jsonObject.put("txPower", scanRecord[29]);
-                    jsonObject.put("distanceBle", distance);
-                    mBTDevices.add(jsonObject);
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
-
-            }
-
-        }
-    };
-
-    private double getBLEDistance(int rssi, byte scanValue) {
-        int txPower = (int) scanValue;
-        if (rssi == 0) {
-            return -1.0; // if we cannot determine distance, return -1.
-        }
-        double ratio = rssi * 1.0 / txPower;
-        if (ratio < 1.0) {
-            return Math.pow(ratio, 10);
-        } else {
-            double accuracy = (0.89976) * Math.pow(ratio, 7.7095) + 0.111;
-            return accuracy;
-        }
-    }
-
-    // Activity Result
 
     @Override
     public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_ENABLE_BT) {
-            tryToTurnBluetoothOn.resolve(_isBluetoothTurnedOn());
+            if (resultCode == Activity.RESULT_CANCELED) {
+                //Bluetooth not enabled.
+                System.out.println("finish");
+                return;
+            }
         }
     }
 
@@ -202,23 +166,99 @@ public class MyLibraryModule extends ReactContextBaseJavaModule implements Activ
 
     }
 
-    private boolean _isBluetoothTurnedOn() {
-        if (bleAdapter == null || !bleAdapter.isEnabled())
-            return false;
-        return true;
+    private void scanLeDevice(final boolean enable) {
+        if (enable) {
+            if (Build.VERSION.SDK_INT < 21) {
+                mBluetoothAdapter.stopLeScan(mLeScanCallback);
+            } else {
+                mLEScanner.stopScan(mScanCallback);
+            }
+            if (Build.VERSION.SDK_INT < 21) {
+                mBluetoothAdapter.startLeScan(mLeScanCallback);
+            } else {
+                mLEScanner.startScan(filters, settings, mScanCallback);
+            }
+        } else {
+            if (Build.VERSION.SDK_INT < 21) {
+                mBluetoothAdapter.stopLeScan(mLeScanCallback);
+            } else {
+                mLEScanner.stopScan(mScanCallback);
+            }
+        }
     }
 
-    @ReactMethod
-    public void isBluetoothTurnedOn(final Promise promise) {
-        promise.resolve(_isBluetoothTurnedOn());
+    private ScanCallback mScanCallback = new ScanCallback() {
+        @Override
+        public void onScanResult(int callbackType, ScanResult result) {
+            Log.i("callbackType", String.valueOf(callbackType));
+            Log.i("result", result.toString());
+            BluetoothDevice btDevice = result.getDevice();
+            connectToDevice(btDevice);
+        }
+
+        @Override
+        public void onBatchScanResults(List<ScanResult> results) {
+            for (ScanResult sr : results) {
+                Log.i("ScanResult - Results", sr.toString());
+            }
+        }
+
+        @Override
+        public void onScanFailed(int errorCode) {
+            Log.e("Scan Failed", "Error Code: " + errorCode);
+        }
+    };
+    private BluetoothAdapter.LeScanCallback mLeScanCallback =
+            new BluetoothAdapter.LeScanCallback() {
+                @Override
+                public void onLeScan(final BluetoothDevice device, int rssi,
+                                     byte[] scanRecord) {
+
+                    Log.i("onLeScan", device.toString());
+                    connectToDevice(device);
+
+                }
+            };
+
+    public void connectToDevice(BluetoothDevice device) {
+        if (mGatt == null) {
+            mGatt = device.connectGatt(context.getApplicationContext(), false, gattCallback);
+            System.out.println("-----------------------" + mGatt.getDevice().getName());
+            scanLeDevice(false);// will stop after first device detection
+        }
     }
 
-    @ReactMethod
-    public void tryToTurnBluetoothOn(final Promise promise) {
-        tryToTurnBluetoothOn = promise;
-        Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-        getReactApplicationContext().getCurrentActivity().startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-    }
+    private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
+        @Override
+        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            Log.i("onConnectionStateChange", "Status: " + status);
+            switch (newState) {
+                case BluetoothProfile.STATE_CONNECTED:
+                    Log.i("gattCallback", "STATE_CONNECTED");
+                    gatt.discoverServices();
+                    break;
+                case BluetoothProfile.STATE_DISCONNECTED:
+                    Log.e("gattCallback", "STATE_DISCONNECTED");
+                    break;
+                default:
+                    Log.e("gattCallback", "STATE_OTHER");
+            }
+        }
 
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            List<BluetoothGattService> services = gatt.getServices();
+            Log.i("onServicesDiscovered", services.toString());
+            gatt.readCharacteristic(services.get(1).getCharacteristics().get
+                    (0));
+        }
 
+        @Override
+        public void onCharacteristicRead(BluetoothGatt gatt,
+                                         BluetoothGattCharacteristic
+                                                 characteristic, int status) {
+            Log.i("onCharacteristicRead", characteristic.toString());
+            gatt.disconnect();
+        }
+    };
 }

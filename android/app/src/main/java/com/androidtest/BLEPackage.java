@@ -11,10 +11,10 @@ import com.facebook.react.uimanager.ViewManager;
 import com.facebook.react.bridge.JavaScriptModule;
 import com.androidtest.*;
 
-public class MyLibraryPackage implements ReactPackage {
+public class BLEPackage implements ReactPackage {
     @Override
     public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
-        return Arrays.<NativeModule>asList(new MyLibraryModule(reactContext));
+        return Arrays.<NativeModule>asList(new BLEModule(reactContext));
     }
 
     @Override

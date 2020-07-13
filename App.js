@@ -11,7 +11,7 @@ import {
 // import nativeCalls from 'rn-device-information';
 // import nativeCalls from 'react-native-my-library';
 
-const MyLibraryBle = NativeModules.MyLibraryBle;
+const nativeCall = NativeModules.BLEModule;
 
 const App = () => {
 
@@ -40,61 +40,78 @@ const App = () => {
     }
   }
 
+  useEffect(() => { 
+    persmission();
+    setInterval(() => {
+      nativeCall.getBleDevices(( devices) => {
+        
+        console.log("getBleDevicesl̥:", devices)
+      })
+
+      nativeCall.getDiscoverDevices((err, devices) => {
+				console.log("TCL: App -> getDiscoverDevices", err)
+        
+        console.log("getDiscoverDevices:", devices)
+      })
+
+    }, 15000);
+  })
+
+  // // useEffect(() => {
+
+
+  // //   nativeCalls.deviceNativeCall.getDeviceName((err, name) => {
+  // //     setDevieName(name);
+  // //   });
+
+  // //   nativeCalls.deviceNativeCall.getMacAddress((err, deviceMacAddress) => {
+  // //     setDevieMacAddress(deviceMacAddress);
+  // //   });
+
+  // //   nativeCalls.deviceNativeCall.getClientList((err, clientList) => {
+  // //     setConnectedDeviceInfo(clientList);
+
+  // //   });
+
+  // // }, []);
+
+  // useEffect(() => {
+  //   persmission();
+  //   // MyLibraryBle.tryToTurnBluetoothOn().then(isBleOn => {
+  //   //   console.log("TCL: App -> res", isBleOn)
+  //   //   if(isBleOn!==undefined){
+  //   //     if(isBleOn){
+  //   //      console.log("TCL: App -> isBleOn", isBleOn);
+         
+  //   //          }
+  //   //   }
+
+  //   // }).catch(err => {
+  //   //   console.log("TCL: App -> err", err)
+
+  //   // });
+   
+  //   setInterval(() => {
+  //     MyLibraryBle.getBleDevices((err, value) => {
+  //       console.log("TCL: App ->getBleDevices value", value)
+  //       console.log("TCL: App ->getBleDevices err", err)
+
+  //     });
+  //   }, 15000);
+  // }, [MyLibraryBle]);
+
   // useEffect(() => {
 
+  //   // MyLibraryBle.getListOfPairedDevices((err, value) => {
+  //   //   console.log("TCL: App -> value", value)
+  //   // });
 
-  //   nativeCalls.deviceNativeCall.getDeviceName((err, name) => {
-  //     setDevieName(name);
-  //   });
+  //   // MyLibraryBle.getBleDevices((err, value) => {
+  //   //   console.log("TCL: App -> getBleDevices value", value)
+  //   //   console.log("TCL: App ->getBleDevices err", err)
 
-  //   nativeCalls.deviceNativeCall.getMacAddress((err, deviceMacAddress) => {
-  //     setDevieMacAddress(deviceMacAddress);
-  //   });
-
-  //   nativeCalls.deviceNativeCall.getClientList((err, clientList) => {
-  //     setConnectedDeviceInfo(clientList);
-
-  //   });
-
+  //   // });
   // }, []);
-
-  useEffect(() => {
-    persmission();
-    MyLibraryBle.tryToTurnBluetoothOn().then(isBleOn => {
-      console.log("TCL: App -> res", isBleOn)
-      if(isBleOn!==undefined){
-        if(isBleOn){
-         console.log("TCL: App -> isBleOn", isBleOn);
-         
-             }
-      }
-
-    }).catch(err => {
-      console.log("TCL: App -> err", err)
-
-    });
-   
-    setInterval(() => {
-      MyLibraryBle.getBleDevices((err, value) => {
-        console.log("TCL: App ->getBleDevices value", value)
-        console.log("TCL: App ->getBleDevices err", err)
-
-      });
-    }, 15000);
-  }, [MyLibraryBle]);
-
-  useEffect(() => {
-
-    MyLibraryBle.getListOfPairedDevices((err, value) => {
-      console.log("TCL: App -> value", value)
-    });
-
-    // MyLibraryBle.getBleDevices((err, value) => {
-    //   console.log("TCL: App -> getBleDevices value", value)
-    //   console.log("TCL: App ->getBleDevices err", err)
-
-    // });
-  }, []);
 
   return (
     <View>
